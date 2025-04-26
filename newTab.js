@@ -18,13 +18,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const originalImageWidth = 1456;
   const originalImageHeight = 816;
 
+  // Time-based initial backgrounds 
+  const sunriseBackground = "assets/sunset.jpg"; //  5am - 9am
+  const afternoonBackground = "assets/original.jpg"; //  10am - 4pm
+  const sunsetBackground = "assets/sunset.jpg"; //  5pm - 7pm
+  const nightBackground = "assets/night2.jpg"; //  8pm - 4am
+
   let hoverListeners = [];
   let sortableInstance = null;
   let deerAreas = [];
   let debugMode = false;
-
-  // Initial background image with 5 deers
-  const initialBackground = "assets/original.jpg";
 
   // Background images for each category
   const backgroundSets = {
@@ -291,6 +294,49 @@ document.addEventListener("DOMContentLoaded", () => {
     },
   ];
 
+  // Define a helper for deep copying the configuration
+  function deepCopy(obj) {
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  // Variable to hold the currently active deer configuration
+  let currentDeerAreaConfigs = deepCopy(baseDeerAreas); // Start with a copy
+
+  // Function to set time-based greeting
+  function setGreeting() {
+    const welcomeMessageElement = document.getElementById("welcome-message");
+    const currentHour = new Date().getHours();
+    let greeting = "Hello!"; // Default greeting
+
+    if (currentHour < 12) {
+      greeting = "Good morning!";
+    } else if (currentHour < 18) {
+      greeting = "Good afternoon!";
+    } else {
+      greeting = "Good evening!";
+    }
+
+    // Only update if the welcome message is currently visible
+    if (!welcomeMessageElement.classList.contains("hidden")) {
+        welcomeMessageElement.textContent = `${greeting} Who do you want to care for today?`;
+    }
+  }
+
+  // Function to get initial background based on time
+  function getInitialBackgroundByTime() {
+    const currentHour = new Date().getHours();
+    if (currentHour >= 5 && currentHour <= 9) {
+      return sunriseBackground;
+    } else if (currentHour >= 10 && currentHour <= 16) {
+      return afternoonBackground;
+    } else if (currentHour >= 17 && currentHour <= 19) {
+      return sunsetBackground;
+    } else {
+      // Covers 8pm (20) to 4am (4)
+      return nightBackground;
+    }
+  }
+
   // 2. Utility functions
   function parsePercentage(value) {
     return parseFloat(value.replace("%", ""));
@@ -334,7 +380,7 @@ chrome.storage.local.get("mood", ({ mood }) => {
 
 
   // 3. Hover-related Functions
-  function calculateResponsivePositions() {
+  function calculateResponsivePositions(deerAreaConfigs) {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const viewportAspect = viewportWidth / viewportHeight;
@@ -357,7 +403,8 @@ chrome.storage.local.get("mood", ({ mood }) => {
       offsetX = (scaledWidth - viewportWidth) / 2;
     }
 
-    return baseDeerAreas.map((deer) => {
+    // Instead of assigning to global deerAreas, map over the input configs
+    return deerAreaConfigs.map((deer) => {
       // Convert original percentages to pixels in scaled image
       const originalLeft = (deer.baseLeft / 100) * originalImageWidth;
       const originalTop = (deer.baseTop / 100) * originalImageHeight;
@@ -423,7 +470,11 @@ chrome.storage.local.get("mood", ({ mood }) => {
   }
 
   function initializeDeerAreas() {
-    deerAreas = calculateResponsivePositions();
+    // Calculate positions based on the current configuration
+    deerAreas = calculateResponsivePositions(currentDeerAreaConfigs);
+
+    // Remove previous listeners before adding new ones
+    removeAllListeners(); // Ensure listeners are cleared properly
 
     deerAreas.forEach((area) => {
       const circle = document.getElementById(`${area.id}-circle`);
@@ -493,9 +544,10 @@ chrome.storage.local.get("mood", ({ mood }) => {
   }
 
   function handleResize() {
-    deerAreas = calculateResponsivePositions();
+    // Recalculate positions based on the current configuration
+    const newDeerAreas = calculateResponsivePositions(currentDeerAreaConfigs);
 
-    deerAreas.forEach((area) => {
+    newDeerAreas.forEach((area) => {
       const circle = document.getElementById(`${area.id}-circle`);
       if (!circle) return;
 
@@ -504,7 +556,21 @@ chrome.storage.local.get("mood", ({ mood }) => {
       circle.style.top = `${area.top}px`;
       circle.style.width = `${area.width}px`;
       circle.style.height = `${area.height}px`;
+      circle.classList.remove('active'); // Deactivate on resize
     });
+
+    // Update the global deerAreas variable with the new positions
+    // This is needed for checkHover and potentially debug overlays
+    deerAreas = newDeerAreas;
+
+    // Re-initialize hover listeners if needed (or update area references)
+    // Simpler to re-initialize for now, ensures correct area data in closures
+    initializeDeerAreas(); // Re-run to attach listeners with updated area data
+
+    // Update debug overlays if active
+    if (debugMode) {
+      createDebugOverlays();
+    }
   }
 
   function createDebugOverlays() {
@@ -1102,7 +1168,7 @@ chrome.storage.local.get("mood", ({ mood }) => {
     // Reset the UI to the initial state
     tasksContainer.classList.add("hidden");
     document.getElementById("welcome-message").classList.remove("hidden");
-    changeBackgroundWithSlide(initialBackground);
+    changeBackgroundWithSlide(getInitialBackgroundByTime());
 
     // Remove thank you message if it exists
     const thankYouMessage = document.querySelector(".thank-you-message");
@@ -1160,16 +1226,7 @@ chrome.storage.local.get("mood", ({ mood }) => {
     }
   };
 
-  // 9. Initialization
-  initializeDeerAreas();
-  window.addEventListener(
-    "resize",
-    debounce(() => {
-      enhancedHandleResize();
-    }, 250)
-  );
-
-  // 10. Chrome Storage
+  // 9. Initialization - Moved initial calls inside storage callback to ensure config is set
   chrome.storage.local.get("state", (data) => {
     if (data.state) {
       const {
@@ -1179,6 +1236,12 @@ chrome.storage.local.get("mood", ({ mood }) => {
         isFinalImage,
         selectedCategory,
       } = data.state;
+
+      // Note: If loading a saved state, deer positions will be based on baseDeerAreas unless we also save/load the adjusted ones.
+      // For simplicity, let's assume saved states always reset to default positions.
+      // If adjusted positions should persist, we'd need to save the adjusted config or a flag.
+      currentDeerAreaConfigs = deepCopy(baseDeerAreas); // Reset to default on load state
+      initializeDeerAreas(); // Initialize with default positions
 
       if (isFinalImage) {
         removeAllListeners();
@@ -1210,14 +1273,31 @@ chrome.storage.local.get("mood", ({ mood }) => {
         );
       }
     } else {
-      //categoriesContainer.classList.remove("hidden");
-      document.getElementById("welcome-message").classList.remove("hidden");
-      showHoverCircles(); // Show hover circles in the initial state
+      // No saved state - Initial Load
+      const initialBackground = getInitialBackgroundByTime();
       changeBackgroundWithSlide(initialBackground);
+
+      // MODIFICATION: Adjust deer positions if not the default background
+      if (initialBackground !== afternoonBackground) {
+        console.log("Adjusting deer positions for non-default background:", initialBackground);
+        // Create a modified configuration
+        const adjustedConfigs = deepCopy(baseDeerAreas);
+        adjustedConfigs.forEach(deer => {
+            deer.baseLeft -= 3; // Shift left by 3 percent
+        });
+        currentDeerAreaConfigs = adjustedConfigs; // Use the adjusted config
+      } else {
+        currentDeerAreaConfigs = deepCopy(baseDeerAreas); // Use default config
+      }
+
+      initializeDeerAreas(); // Initialize using the determined config (default or adjusted)
+      setGreeting();
+      showDailyQuote();
+      showHoverCircles();
     }
   });
 
-  // 11. Daily Quote Logic
+  // 10. Daily Quote Logic - Function definition moved up, call remains in storage callback
   function showDailyQuote() {
     const today = new Date().toDateString(); // Get date string (e.g., "Mon Jun 10 2024")
 
@@ -1245,6 +1325,18 @@ chrome.storage.local.get("mood", ({ mood }) => {
     });
   }
 
-  // Show the daily quote on load
-  showDailyQuote();
+  // Set the initial greeting - Moved inside storage callback
+  // setGreeting();
+
+  // Show the daily quote on load - Moved inside storage callback
+  // showDailyQuote();
+
+  // 9. Initialization - Moved initial calls inside storage callback to ensure config is set
+  initializeDeerAreas();
+  window.addEventListener(
+    "resize",
+    debounce(() => {
+      enhancedHandleResize();
+    }, 250)
+  );
 });
