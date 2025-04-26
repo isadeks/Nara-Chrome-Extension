@@ -18,7 +18,13 @@ Nara is a Chrome extension designed to provide users with a refreshing and joyfu
 - **5-Task To-Do List**: Tailored to the chosen category, with simple and achievable tasks like:
   - **Myself**: "Drink water," "Take a walk." 🚶‍♂️
   - **Home**: "Clean a room," "Sort laundry." 🧺
-- **User Reward System**: Celebrate your small wins with rewards upon task completion. 🎉
+
+## ✨ Recent Updates (Version 1.5)
+
+- **Daily Uplifting Quote**: Displays a new inspirational quote each day to start things off positively. 💬
+- **Time-Based Experience**: Features a dynamic greeting and background image that changes based on the time of day (sunrise, afternoon, sunset, night). ☀️🌙
+- **Mood Tracker**: Select your current mood to reflect on your feelings. 😊😐😟
+- **Encouragement Bubbles**: Receive encouraging messages as you complete tasks. 👍
 
 ## Technologies Used 💻
 
